@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="BubbleScroller">
+        <attr name="bubbleScroller_textSize" format="reference"/>
+        <attr name="bubbleScroller_textColor" format="reference"/>
+    </declare-styleable>
+</resources>
