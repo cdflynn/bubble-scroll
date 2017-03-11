@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PointF;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Build;
 import android.support.annotation.ColorInt;
@@ -17,6 +18,7 @@ import android.support.v4.content.ContextCompat;
 import android.support.v4.view.ViewCompat;
 import android.text.TextPaint;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
@@ -26,31 +28,32 @@ import cdflynn.android.library.scroller.util.Geometry;
 // TODO:
 
 /**
- * - highlight current section header
- * - make the highlight styleable
- * - Use String instead of char for headers
+ * - remove intrinsic padding and figure out why the first header is missing.
+ * - two-way information flow of scrolls
  * - fix the weird long press thing
  * - Use gravity to place the header text top, center, or bottom
- * - Consider attaching {@link android.support.v4.view.ScrollingView} as the adapter
  */
 public class BubbleScroller extends View {
 
     private static final String TAG = BubbleScroller.class.getSimpleName();
-
-    private static final float CIRCLE_RADIUS = 200F;
-    private static final long ANIM_DURATION = 150L;
-    private static final int INTRINSIC_VERTICAL_PADDING = 40;
-    private static final float TEXT_SCALE_FACTOR_MAX = 1.3F;
-    private static final float TEXT_SCALE_FACTOR_MIN = 0.7F;
     private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    private static final long ANIM_DURATION = 150L;
+    private static final float BUMPER_RADIUS = 200F;
+    private static final int HIGHLIGHT_COLOR_DEFAULT = Color.CYAN;
+    private static final int HIGHLIGHT_SIZE_DEFAULT = 34;
+    private static final int INTRINSIC_VERTICAL_PADDING = 40;
+    private static final float SCALE_FACTOR_MAX = 1.3F;
+    private static final float SCALE_FACTOR_MIN = 0.7F;
     private static final int TEXT_SIZE_DEFAULT = 50;
     private static final int TEXT_COLOR_DEFAULT = Color.BLACK;
+
     private static final boolean DEBUG = false;
 
     /**
      * A default adapter that shows the alphabet, evenly spaced.
      */
-    private static final BubbleScrollerAdapter ADAPTER_DEFAULT = new BubbleScrollerAdapter() {
+    private static final SectionScrollAdapter ADAPTER_DEFAULT = new SectionScrollAdapter() {
         @Override
         public int getSectionCount() {
             return ALPHABET.length();
@@ -62,26 +65,33 @@ public class BubbleScroller extends View {
         }
 
         @Override
-        public int getSectionSize(int position) {
+        public int getSectionWeight(int position) {
             return 1; // all equal size
-        }
-
-        @Override
-        public int getTotalSize() {
-            return ALPHABET.length();
         }
     };
 
     /**
-     * Reports the start of a scroll
+     * Reports the start of a scroll.
      */
     private GestureDetector mGestureDetector;
-    private BubbleScrollerAdapter mAdapter;
     /**
-     * The path along which to draw text
+     * Provides information about the scrollable collection.
+     */
+    private SectionScrollAdapter mAdapter;
+    /**
+     * A listener that will be informed about scroll progress and clicks.
+     */
+    @Nullable
+    private ScrollerListener mScrollerListener;
+    /**
+     * The path along which to draw text.  This includes the vertical line and the bumper.
      */
     private Path mTextPath;
     private Paint mDebugPaint;
+    /**
+     * Paint to draw the section highlight.
+     */
+    private Paint mHighlightPaint;
     /**
      * Text appearance
      */
@@ -92,10 +102,19 @@ public class BubbleScroller extends View {
      */
     private float mTextSize;
     /**
+     * The size of the section highlight.
+     */
+    private float mHighlightSize;
+    /**
      * The color of the text.
      */
     @ColorInt
     private int mTextColor;
+    /**
+     * The color of the section highlight.
+     */
+    @ColorInt
+    private int mHighlightColor;
     /**
      * A rectangle inside this view's bounds, that represents the drawable area.  This is intended
      * to account for padding.
@@ -107,6 +126,10 @@ public class BubbleScroller extends View {
      * APIs demand you pass a {@link android.graphics.Rect} or {@link RectF}.
      */
     private RectF mCircleRect;
+    /**
+     * Utility rect for measuring text placement.
+     */
+    private Rect mTextRect;
     /**
      * The current center point of the bumper circle.  This will animate back and forth as
      * the circle protrudes the scroll line.
@@ -140,10 +163,14 @@ public class BubbleScroller extends View {
      */
     private int mSectionCount;
     /**
-     * The total size of all sections in aggregate.  This is set every time the adapter changes,
+     * Which section is being shown in the scrollable contents?
+     */
+    private int mCurrentSectionIndex;
+    /**
+     * The total weight of all sections in aggregate.  This is set every time the adapter changes,
      * or when {@link #notifySectionsChanged()} is called.
      */
-    private int mTotalSize;
+    private int mTotalWeight;
     /**
      * The scale factor for each instance of text on the scroll line.  These are re-computed
      * as the bumper circle moves vertically and laterally.
@@ -198,7 +225,7 @@ public class BubbleScroller extends View {
     /**
      * Attach an adapter to inform this view of custom section values.
      */
-    public void setBubbleScrollerAdapter(BubbleScrollerAdapter adapter) {
+    public void setSectionScrollAdapter(@Nullable SectionScrollAdapter adapter) {
         if (adapter == null) {
             mAdapter = ADAPTER_DEFAULT;
         } else {
@@ -208,8 +235,15 @@ public class BubbleScroller extends View {
     }
 
     /**
+     * Attach a listener to be notified of click events on section headers.
+     */
+    public void setScrollerListener(@Nullable ScrollerListener listener) {
+        mScrollerListener = listener;
+    }
+
+    /**
      * Inform this view that the section details have changed, and it should re-calculate spacing
-     * and display based on this new information.  The {@link BubbleScrollerAdapter} will be called
+     * and display based on this new information.  The {@link SectionScrollAdapter} will be called
      * to assess the new state.
      */
     public void notifySectionsChanged() {
@@ -219,7 +253,6 @@ public class BubbleScroller extends View {
     private void init(Context c, @Nullable AttributeSet attrs) {
         resolveXmlAttributes(c, attrs);
         setClickable(true);
-        setLongClickable(false);
         mGestureDetector = new GestureDetector(c, mGestureListener);
         mTextPath = new Path();
         mCircleCenter = new PointF();
@@ -228,9 +261,11 @@ public class BubbleScroller extends View {
         mAnimator = ValueAnimator.ofFloat(0, 1);
         mDebugPaint = createDebugPaint(ContextCompat.getColor(c, R.color.green));
         mTextPaint = createTextPaint(mTextColor, mTextSize);
+        mHighlightPaint = createHighlightPaint(mHighlightColor);
         mDrawableRect = new RectF();
         mCircleRect = new RectF();
-        setBubbleScrollerAdapter(ADAPTER_DEFAULT);
+        mTextRect = new Rect();
+        setSectionScrollAdapter(ADAPTER_DEFAULT);
     }
 
     private void resolveXmlAttributes(Context c, AttributeSet attrs) {
@@ -242,7 +277,9 @@ public class BubbleScroller extends View {
 
         try {
             mTextColor = a.getColor(R.styleable.BubbleScroller_bubbleScroller_textColor, TEXT_COLOR_DEFAULT);
+            mHighlightColor = a.getColor(R.styleable.BubbleScroller_bubbleScroller_highlightColor, HIGHLIGHT_COLOR_DEFAULT);
             mTextSize = a.getDimension(R.styleable.BubbleScroller_bubbleScroller_textSize, TEXT_SIZE_DEFAULT);
+            mHighlightSize = a.getDimensionPixelSize(R.styleable.BubbleScroller_bubbleScroller_highlightSize, HIGHLIGHT_SIZE_DEFAULT);
         } finally {
             a.recycle();
         }
@@ -262,8 +299,8 @@ public class BubbleScroller extends View {
             mTextEnd.x = mDrawableRect.centerX();
             mTextEnd.y = mDrawableRect.bottom;
 
-            mBumperCircleXResting = (int) (mDrawableRect.centerX() + CIRCLE_RADIUS);
-            mBumperCircleXProtruding = (int) (mDrawableRect.centerX() + CIRCLE_RADIUS / 2);
+            mBumperCircleXResting = (int) (mDrawableRect.centerX() + BUMPER_RADIUS);
+            mBumperCircleXProtruding = (int) (mDrawableRect.centerX() + BUMPER_RADIUS / 2);
 
             mHorizontalBaseline = (int) mTextStart.x;
 
@@ -282,17 +319,25 @@ public class BubbleScroller extends View {
         }
 
         for (int i = 0; i < mSectionCount; i++) {
-
-            final float verticalPosition = mVerticalOffsets[i];
-            final float horizontalPosition = mHorizontalBaseline - mHorizontalOffsets[i];
             mTextPaint.setTextSize(mScaleFactors[i] * mTextSize);
+            final float textCorrection = ((mTextPaint.descent() + mTextPaint.ascent()) / 2);
+            final float textVerticalPosition = mVerticalOffsets[i] - textCorrection;
+            final float horizontalPosition = mHorizontalBaseline - mHorizontalOffsets[i];
 
             if (mTitleHolder[i] == null) {
                 mTitleHolder[i] = mAdapter.getSectionTitle(i);
             }
 
+            if (mCurrentSectionIndex == i) {
+                mTextPaint.getTextBounds(mTitleHolder[i], 0, mTitleHolder[i].length(), mTextRect);
+
+                final float verticalPosition = mVerticalOffsets[i] + mTextRect.bottom/2;
+                final float highlightSize = mScaleFactors[i] * mHighlightSize;
+                canvas.drawCircle(horizontalPosition, verticalPosition, highlightSize, mHighlightPaint);
+            }
+
             canvas.drawText(mTitleHolder[i], 0, mTitleHolder[i].length(), horizontalPosition,
-                    verticalPosition, mTextPaint);
+                    textVerticalPosition, mTextPaint);
         }
     }
 
@@ -313,6 +358,15 @@ public class BubbleScroller extends View {
         Paint p = new Paint();
         p.setStrokeWidth(20);
         p.setStyle(Paint.Style.STROKE);
+        p.setAntiAlias(true);
+        p.setStrokeCap(Paint.Cap.ROUND);
+        p.setColor(color);
+        return p;
+    }
+
+    private Paint createHighlightPaint(@ColorInt int color) {
+        Paint p = new Paint();
+        p.setStyle(Paint.Style.FILL_AND_STROKE);
         p.setAntiAlias(true);
         p.setStrokeCap(Paint.Cap.ROUND);
         p.setColor(color);
@@ -401,12 +455,12 @@ public class BubbleScroller extends View {
     }
 
     private void setVerticalOffsets(int[] intoArray) {
-        final int totalSize = mTotalSize;
+        final int totalSize = mTotalWeight;
         final float height = mDrawableRect.height();
         int offset = INTRINSIC_VERTICAL_PADDING;
 
         for (int i = 0; i < mSectionCount; i++) {
-            final float sectionSize = mAdapter.getSectionSize(i);
+            final float sectionSize = mAdapter.getSectionWeight(i);
             intoArray[i] = offset;
             offset += (sectionSize / (float) totalSize) * height;
         }
@@ -421,10 +475,10 @@ public class BubbleScroller extends View {
     private void setCircleCenter(float x, float y) {
         mCircleCenter.x = x;
         mCircleCenter.y = y;
-        mCircleRect.left = mCircleCenter.x - CIRCLE_RADIUS;
-        mCircleRect.top = mCircleCenter.y - CIRCLE_RADIUS;
-        mCircleRect.right = mCircleCenter.x + CIRCLE_RADIUS;
-        mCircleRect.bottom = mCircleCenter.y + CIRCLE_RADIUS;
+        mCircleRect.left = mCircleCenter.x - BUMPER_RADIUS;
+        mCircleRect.top = mCircleCenter.y - BUMPER_RADIUS;
+        mCircleRect.right = mCircleCenter.x + BUMPER_RADIUS;
+        mCircleRect.bottom = mCircleCenter.y + BUMPER_RADIUS;
     }
 
     /**
@@ -441,13 +495,17 @@ public class BubbleScroller extends View {
 
         for (int i = 0; i < horizontalOffsets.length; i++) {
             if (horizontalOffsets[i] == 0) {
-                intoArray[i] = TEXT_SCALE_FACTOR_MIN;
+                intoArray[i] = SCALE_FACTOR_MIN;
                 continue;
             }
 
-            intoArray[i] = TEXT_SCALE_FACTOR_MIN + ((TEXT_SCALE_FACTOR_MAX - TEXT_SCALE_FACTOR_MIN)
+            intoArray[i] = SCALE_FACTOR_MIN + ((SCALE_FACTOR_MAX - SCALE_FACTOR_MIN)
                     * (horizontalOffsets[i] / (float)mMaxHorizontalOffset));
         }
+    }
+
+    private void setCurrentSectionIndex(int sectionIndex) {
+        mCurrentSectionIndex = sectionIndex;
     }
 
     /**
@@ -456,9 +514,9 @@ public class BubbleScroller extends View {
      * and just before calling invalidate() to prompt the next draw call.
      */
     private void calculateDrawableElements() {
-        setYIntersect(mTextStart.x, mCircleCenter, CIRCLE_RADIUS, mYIntersect);
+        setYIntersect(mTextStart.x, mCircleCenter, BUMPER_RADIUS, mYIntersect);
         setHorizontalOffsets(mCircleCenter.x - mHorizontalBaseline,
-                CIRCLE_RADIUS,
+                BUMPER_RADIUS,
                 mYIntersect,
                 mVerticalOffsets,
                 mHorizontalOffsets);
@@ -467,7 +525,7 @@ public class BubbleScroller extends View {
         mTextPath.reset();
         mTextPath.moveTo(mTextStart.x, Math.min(mTextStart.y, mYIntersect[0]));
         if (drawArc) {
-            final float absSweepAngle = sweepAngle(Math.abs(mCircleCenter.x - mTextStart.x), CIRCLE_RADIUS);
+            final float absSweepAngle = sweepAngle(Math.abs(mCircleCenter.x - mTextStart.x), BUMPER_RADIUS);
             final float startAngle = 180 + absSweepAngle / 2;
             mTextPath.lineTo(mTextStart.x, mYIntersect[0]);
             mTextPath.arcTo(mCircleRect, startAngle, -absSweepAngle, false);
@@ -515,7 +573,11 @@ public class BubbleScroller extends View {
         final int sectionCount = mAdapter.getSectionCount();
         if (sectionCount != mSectionCount) { // if the section count changed
             mSectionCount = sectionCount;
-            mTotalSize = mAdapter.getTotalSize();
+            int totalWeight = 0;
+            for (int i = 0; i < mAdapter.getSectionCount(); i++) {
+                totalWeight += mAdapter.getSectionWeight(i);
+            }
+            mTotalWeight = totalWeight;
             mHorizontalOffsets = new int[sectionCount];
             mVerticalOffsets = new int[sectionCount];
             mScaleFactors = new float[sectionCount];
@@ -526,30 +588,93 @@ public class BubbleScroller extends View {
         invalidate();
     }
 
+    private float percentageProgressAtYPosition(float y) {
+        if (y <= mDrawableRect.top) {
+            return 0;
+        }
+
+        if (y >= mDrawableRect.bottom) {
+            return 1;
+        }
+
+        final float yCorrectedForPadding = y - mDrawableRect.top;
+        return yCorrectedForPadding / mDrawableRect.height();
+    }
+
+    private int sectionIndexAtYPosition(float y) {
+        if (y <= mDrawableRect.top) {
+            return 0;
+        }
+
+        if (y >= mDrawableRect.bottom) {
+            return mSectionCount - 1;
+        }
+
+        for (int i = 0; i < mVerticalOffsets.length; i++) {
+            if (mVerticalOffsets[i] > y) {
+                return Math.max(0, i-1);
+            }
+        }
+
+        return mSectionCount -1;
+    }
+
+    private void dispatchSectionClicked(int sectionIndex) {
+        if (mScrollerListener == null) {
+            return;
+        }
+
+        mScrollerListener.onSectionClicked(sectionIndex);
+    }
+
+    private void dispatchScrollPercentageChanged(float y) {
+        if (mScrollerListener == null) {
+            return;
+        }
+
+        if (y <= mDrawableRect.top) {
+            mScrollerListener.onScrollPositionChanged(0, 0);
+            return;
+        }
+
+        if (y >= mDrawableRect.bottom) {
+            mScrollerListener.onScrollPositionChanged(1, mSectionCount-1);
+            return;
+        }
+
+        final float percentage = percentageProgressAtYPosition(y);
+        final int sectionIndex = sectionIndexAtYPosition(y);
+        mScrollerListener.onScrollPositionChanged(percentage, sectionIndex);
+    }
+
     private final GestureDetector.OnGestureListener mGestureListener = new GestureDetector.OnGestureListener() {
         @Override
         public boolean onDown(MotionEvent e) {
-            setCircleCenter(mCircleCenter.x, e.getY());
-            animateCircleTranslationX(mBumperCircleXProtruding);
             return false;
         }
 
         @Override
         public void onShowPress(MotionEvent e) {
-            // do nothing
+            setCircleCenter(mCircleCenter.x, e.getY());
+            animateCircleTranslationX(mBumperCircleXProtruding);
         }
 
         @Override
         public boolean onSingleTapUp(MotionEvent e) {
-            // TODO: highlight location
+            final int sectionIndex = sectionIndexAtYPosition(e.getY());
+            setCurrentSectionIndex(sectionIndex);
+            invalidate();
+            dispatchSectionClicked(sectionIndex);
             return true;
         }
 
         @Override
         public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+            setCurrentSectionIndex(sectionIndexAtYPosition(e2.getY()));
             setCircleCenter(mCircleCenter.x, e2.getY());
             calculateDrawableElements();
             invalidate();
+            dispatchScrollPercentageChanged(e2.getY());
             return true;
         }
 
@@ -560,7 +685,7 @@ public class BubbleScroller extends View {
 
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-            return true;
+            return false;
         }
     };
 }

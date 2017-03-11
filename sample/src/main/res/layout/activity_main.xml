@@ -15,6 +15,7 @@
         android:id="@+id/bubble_scroller"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        app:bubbleScroller_highlightColor="@color/lake"
         app:bubbleScroller_textColor="@color/chrome"
         app:bubbleScroller_textSize="@dimen/text_size_small"/>
 </RelativeLayout>

@@ -1,8 +1,8 @@
 package com.github.cdflynn.android.scrollsample;
 
-import cdflynn.android.library.scroller.BubbleScrollerAdapter;
+import cdflynn.android.library.scroller.SectionScrollAdapter;
 
-public class NumericAdapter implements BubbleScrollerAdapter {
+public class NumericAdapter implements SectionScrollAdapter {
 
     private static final String NUMBERS = "0123456789";
 
@@ -17,12 +17,7 @@ public class NumericAdapter implements BubbleScrollerAdapter {
     }
 
     @Override
-    public int getSectionSize(int position) {
+    public int getSectionWeight(int position) {
         return (position * 2) + 1;
-    }
-
-    @Override
-    public int getTotalSize() {
-        return 100;
     }
 }
