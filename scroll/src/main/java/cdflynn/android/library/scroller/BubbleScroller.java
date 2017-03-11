@@ -242,6 +242,14 @@ public class BubbleScroller extends View {
     }
 
     /**
+     * Inform this view that the currently displayed section has changed.
+     */
+    public void showSectionHighlight(int sectionIndex) {
+        setCurrentSectionIndex(sectionIndex);
+        invalidate();
+    }
+
+    /**
      * Inform this view that the section details have changed, and it should re-calculate spacing
      * and display based on this new information.  The {@link SectionScrollAdapter} will be called
      * to assess the new state.
@@ -291,8 +299,8 @@ public class BubbleScroller extends View {
         if (changed) {
             mDrawableRect.left = getPaddingLeft();
             mDrawableRect.top = getPaddingTop() + INTRINSIC_VERTICAL_PADDING;
-            mDrawableRect.right = right - getPaddingRight();
-            mDrawableRect.bottom = bottom - getPaddingBottom();
+            mDrawableRect.right = right - left - getPaddingRight();
+            mDrawableRect.bottom = bottom - top - getPaddingBottom();
 
             mTextStart.x = mDrawableRect.centerX();
             mTextStart.y = mDrawableRect.top;
@@ -316,6 +324,7 @@ public class BubbleScroller extends View {
         super.onDraw(canvas);
         if (DEBUG) {
             canvas.drawPath(mTextPath, mDebugPaint);
+            canvas.drawRect(mDrawableRect, mDebugPaint);
         }
 
         for (int i = 0; i < mSectionCount; i++) {
@@ -331,7 +340,7 @@ public class BubbleScroller extends View {
             if (mCurrentSectionIndex == i) {
                 mTextPaint.getTextBounds(mTitleHolder[i], 0, mTitleHolder[i].length(), mTextRect);
 
-                final float verticalPosition = mVerticalOffsets[i] + mTextRect.bottom/2;
+                final float verticalPosition = mVerticalOffsets[i] + mTextRect.bottom / 2;
                 final float highlightSize = mScaleFactors[i] * mHighlightSize;
                 canvas.drawCircle(horizontalPosition, verticalPosition, highlightSize, mHighlightPaint);
             }
@@ -500,7 +509,7 @@ public class BubbleScroller extends View {
             }
 
             intoArray[i] = SCALE_FACTOR_MIN + ((SCALE_FACTOR_MAX - SCALE_FACTOR_MIN)
-                    * (horizontalOffsets[i] / (float)mMaxHorizontalOffset));
+                    * (horizontalOffsets[i] / (float) mMaxHorizontalOffset));
         }
     }
 
@@ -612,11 +621,11 @@ public class BubbleScroller extends View {
 
         for (int i = 0; i < mVerticalOffsets.length; i++) {
             if (mVerticalOffsets[i] > y) {
-                return Math.max(0, i-1);
+                return Math.max(0, i - 1);
             }
         }
 
-        return mSectionCount -1;
+        return mSectionCount - 1;
     }
 
     private void dispatchSectionClicked(int sectionIndex) {
@@ -638,7 +647,7 @@ public class BubbleScroller extends View {
         }
 
         if (y >= mDrawableRect.bottom) {
-            mScrollerListener.onScrollPositionChanged(1, mSectionCount-1);
+            mScrollerListener.onScrollPositionChanged(1, mSectionCount - 1);
             return;
         }
 
