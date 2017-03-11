@@ -14,6 +14,7 @@ import android.os.Build;
 import android.support.annotation.ColorInt;
 import android.support.annotation.Nullable;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.view.ViewCompat;
 import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
@@ -22,15 +23,26 @@ import android.view.View;
 
 import cdflynn.android.library.scroller.util.Geometry;
 
-// Naming things is hard.  TODO: change name
+// TODO:
+
+/**
+ * - highlight current section header
+ * - make the highlight styleable
+ * - Use String instead of char for headers
+ * - fix the weird long press thing
+ * - Use gravity to place the header text top, center, or bottom
+ * - Consider attaching {@link android.support.v4.view.ScrollingView} as the adapter
+ */
 public class BubbleScroller extends View {
+
+    private static final String TAG = BubbleScroller.class.getSimpleName();
 
     private static final float CIRCLE_RADIUS = 200F;
     private static final long ANIM_DURATION = 150L;
     private static final int INTRINSIC_VERTICAL_PADDING = 40;
     private static final float TEXT_SCALE_FACTOR_MAX = 1.3F;
     private static final float TEXT_SCALE_FACTOR_MIN = 0.7F;
-    private static final char[] ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+    private static final String ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final int TEXT_SIZE_DEFAULT = 50;
     private static final int TEXT_COLOR_DEFAULT = Color.BLACK;
     private static final boolean DEBUG = false;
@@ -41,17 +53,22 @@ public class BubbleScroller extends View {
     private static final BubbleScrollerAdapter ADAPTER_DEFAULT = new BubbleScrollerAdapter() {
         @Override
         public int getSectionCount() {
-            return ALPHABET.length;
+            return ALPHABET.length();
         }
 
         @Override
-        public char getSectionTitle(int position) {
-            return ALPHABET[position];
+        public String getSectionTitle(int position) {
+            return ALPHABET.substring(position, position + 1);
         }
 
         @Override
         public int getSectionSize(int position) {
-            return 1;
+            return 1; // all equal size
+        }
+
+        @Override
+        public int getTotalSize() {
+            return ALPHABET.length();
         }
     };
 
@@ -113,15 +130,29 @@ public class BubbleScroller extends View {
      */
     private int[] mHorizontalOffsets;
     /**
+     * Vertical offset values for each instance of text on the scroll line.  These are re-computed
+     * when the number or relative magnitude of sections changes.
+     */
+    private int[] mVerticalOffsets;
+    /**
+     * The number of sections that this view will display.  This is set every time the adapter changes,
+     * or when {@link #notifySectionsChanged()} is called.
+     */
+    private int mSectionCount;
+    /**
+     * The total size of all sections in aggregate.  This is set every time the adapter changes,
+     * or when {@link #notifySectionsChanged()} is called.
+     */
+    private int mTotalSize;
+    /**
      * The scale factor for each instance of text on the scroll line.  These are re-computed
      * as the bumper circle moves vertically and laterally.
      */
     private float[] mScaleFactors;
     /**
-     * A length 1 character array that is used to call {@link Canvas#drawText(char[], int, int, float, float, Paint)}.
-     * This simply avoids allocating a new character array each time.
+     * Cache of section titles, preventing frequent calls to the adapter.
      */
-    private char[] mCharHolder = new char[1];
+    private String[] mTitleHolder;
     /**
      * An animator to mutate the bumper circle X position over time.
      */
@@ -138,6 +169,10 @@ public class BubbleScroller extends View {
      * The x coordinate of the vertical scroll line.
      */
     private int mHorizontalBaseline;
+    /**
+     * The farthest absolute distance that section headers will protrude.
+     */
+    private int mMaxHorizontalOffset;
 
     public BubbleScroller(Context context) {
         super(context);
@@ -164,16 +199,27 @@ public class BubbleScroller extends View {
      * Attach an adapter to inform this view of custom section values.
      */
     public void setBubbleScrollerAdapter(BubbleScrollerAdapter adapter) {
-        mAdapter = adapter;
-        final int sectionCount = adapter.getSectionCount();
-        mHorizontalOffsets = new int[sectionCount];
-        mScaleFactors = new float[sectionCount];
+        if (adapter == null) {
+            mAdapter = ADAPTER_DEFAULT;
+        } else {
+            mAdapter = adapter;
+        }
+        notifySectionsChangedInternal();
+    }
+
+    /**
+     * Inform this view that the section details have changed, and it should re-calculate spacing
+     * and display based on this new information.  The {@link BubbleScrollerAdapter} will be called
+     * to assess the new state.
+     */
+    public void notifySectionsChanged() {
+        notifySectionsChangedInternal();
     }
 
     private void init(Context c, @Nullable AttributeSet attrs) {
         resolveXmlAttributes(c, attrs);
-        setBubbleScrollerAdapter(ADAPTER_DEFAULT);
         setClickable(true);
+        setLongClickable(false);
         mGestureDetector = new GestureDetector(c, mGestureListener);
         mTextPath = new Path();
         mCircleCenter = new PointF();
@@ -184,6 +230,7 @@ public class BubbleScroller extends View {
         mTextPaint = createTextPaint(mTextColor, mTextSize);
         mDrawableRect = new RectF();
         mCircleRect = new RectF();
+        setBubbleScrollerAdapter(ADAPTER_DEFAULT);
     }
 
     private void resolveXmlAttributes(Context c, AttributeSet attrs) {
@@ -220,8 +267,10 @@ public class BubbleScroller extends View {
 
             mHorizontalBaseline = (int) mTextStart.x;
 
+            mMaxHorizontalOffset = Math.abs(mHorizontalBaseline - mBumperCircleXProtruding);
+
             setCircleCenter(mBumperCircleXResting, mDrawableRect.centerY());
-            calculateDrawableElements();
+            notifySectionsChangedInternal();
         }
     }
 
@@ -231,20 +280,19 @@ public class BubbleScroller extends View {
         if (DEBUG) {
             canvas.drawPath(mTextPath, mDebugPaint);
         }
-        final float height = mDrawableRect.bottom - mDrawableRect.top;
-        final int sectionCount = mAdapter.getSectionCount();
-        for (int i = 0; i < sectionCount; i++) {
 
-            final float verticalPosition = height * ((float) i / (float) sectionCount) + mDrawableRect.top;
+        for (int i = 0; i < mSectionCount; i++) {
+
+            final float verticalPosition = mVerticalOffsets[i];
             final float horizontalPosition = mHorizontalBaseline - mHorizontalOffsets[i];
             mTextPaint.setTextSize(mScaleFactors[i] * mTextSize);
-            mCharHolder[0] = mAdapter.getSectionTitle(i);
-            canvas.drawText(mCharHolder,
-                    0,
-                    1,
-                    horizontalPosition,
-                    verticalPosition,
-                    mTextPaint);
+
+            if (mTitleHolder[i] == null) {
+                mTitleHolder[i] = mAdapter.getSectionTitle(i);
+            }
+
+            canvas.drawText(mTitleHolder[i], 0, mTitleHolder[i].length(), horizontalPosition,
+                    verticalPosition, mTextPaint);
         }
     }
 
@@ -322,17 +370,17 @@ public class BubbleScroller extends View {
      * {@code intoArray.length} horizontal offsets at evenly spaced vertical positions and write them
      * to {@code intoArray}.
      *
-     * @param distance       How far is the circle from the vertical baseline?
-     * @param radius         How large is the circle's radius?
-     * @param yIntersections Where does the circle intersect the vertical baseline?
-     * @param height         How much vertical room is there to space out elements of {@code intoArray}?
-     * @param intoArray      The array to write each horizontal offset value.
+     * @param distance        How far is the circle from the vertical baseline?
+     * @param radius          How large is the circle's radius?
+     * @param yIntersections  Where does the circle intersect the vertical baseline?
+     * @param verticalOffsets The vertical position offset for each section.
+     * @param intoArray       The array to write each horizontal offset value.
      */
     private void setHorizontalOffsets(float distance, float radius, float[] yIntersections,
-                                      int height, int[] intoArray) {
+                                      int[] verticalOffsets, int[] intoArray) {
         final int count = intoArray.length;
         for (int i = 0; i < count; i++) {
-            final float verticalPosition = (float) height * ((float) i / (float) count);
+            final float verticalPosition = verticalOffsets[i];
             if (verticalPosition <= yIntersections[0]) {
                 intoArray[i] = 0;
                 continue;
@@ -352,10 +400,23 @@ public class BubbleScroller extends View {
         }
     }
 
+    private void setVerticalOffsets(int[] intoArray) {
+        final int totalSize = mTotalSize;
+        final float height = mDrawableRect.height();
+        int offset = INTRINSIC_VERTICAL_PADDING;
+
+        for (int i = 0; i < mSectionCount; i++) {
+            final float sectionSize = mAdapter.getSectionSize(i);
+            intoArray[i] = offset;
+            offset += (sectionSize / (float) totalSize) * height;
+        }
+    }
+
     /**
      * Set the center of the bumper circle.  This will also update the circle's bounding box.
-     * @param x
-     * @param y
+     *
+     * @param x the x coordinate
+     * @param y the y coordinate
      */
     private void setCircleCenter(float x, float y) {
         mCircleCenter.x = x;
@@ -378,13 +439,6 @@ public class BubbleScroller extends View {
                     " does not match the horizontal offsets array length.");
         }
 
-        float max = 0;
-        for (int offset : horizontalOffsets) {
-            if (Math.abs(offset) > max) {
-                max = Math.abs(offset);
-            }
-        }
-
         for (int i = 0; i < horizontalOffsets.length; i++) {
             if (horizontalOffsets[i] == 0) {
                 intoArray[i] = TEXT_SCALE_FACTOR_MIN;
@@ -392,7 +446,7 @@ public class BubbleScroller extends View {
             }
 
             intoArray[i] = TEXT_SCALE_FACTOR_MIN + ((TEXT_SCALE_FACTOR_MAX - TEXT_SCALE_FACTOR_MIN)
-                    * (horizontalOffsets[i]/max));
+                    * (horizontalOffsets[i] / (float)mMaxHorizontalOffset));
         }
     }
 
@@ -406,7 +460,7 @@ public class BubbleScroller extends View {
         setHorizontalOffsets(mCircleCenter.x - mHorizontalBaseline,
                 CIRCLE_RADIUS,
                 mYIntersect,
-                (int) mDrawableRect.height(),
+                mVerticalOffsets,
                 mHorizontalOffsets);
         setScaleFactors(mHorizontalOffsets, mScaleFactors);
         final boolean drawArc = mYIntersect[0] != mYIntersect[1];
@@ -426,6 +480,7 @@ public class BubbleScroller extends View {
 
     /**
      * Calculate the sweep angle of the protruding bumper.
+     *
      * @param horizontalDistance The distance from the center of the circle to the vertical scroll line.
      * @param circleRadius       The circle's radius
      */
@@ -449,6 +504,26 @@ public class BubbleScroller extends View {
             }
         });
         mAnimator.start();
+    }
+
+    private void notifySectionsChangedInternal() {
+        if (!ViewCompat.isLaidOut(this) && !isInLayout()) {
+            // we'll come back to this in the layout pass.
+            return;
+        }
+
+        final int sectionCount = mAdapter.getSectionCount();
+        if (sectionCount != mSectionCount) { // if the section count changed
+            mSectionCount = sectionCount;
+            mTotalSize = mAdapter.getTotalSize();
+            mHorizontalOffsets = new int[sectionCount];
+            mVerticalOffsets = new int[sectionCount];
+            mScaleFactors = new float[sectionCount];
+            mTitleHolder = new String[sectionCount];
+        }
+        setVerticalOffsets(mVerticalOffsets);
+        calculateDrawableElements();
+        invalidate();
     }
 
     private final GestureDetector.OnGestureListener mGestureListener = new GestureDetector.OnGestureListener() {

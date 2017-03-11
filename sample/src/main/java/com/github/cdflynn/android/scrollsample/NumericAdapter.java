@@ -4,20 +4,25 @@ import cdflynn.android.library.scroller.BubbleScrollerAdapter;
 
 public class NumericAdapter implements BubbleScrollerAdapter {
 
-    private static final char[] NUMBERS = "0123456789".toCharArray();
+    private static final String NUMBERS = "0123456789";
 
     @Override
     public int getSectionCount() {
-        return NUMBERS.length;
+        return NUMBERS.length();
     }
 
     @Override
-    public char getSectionTitle(int position) {
-        return NUMBERS[position];
+    public String getSectionTitle(int position) {
+        return NUMBERS.substring(position, position + 1);
     }
 
     @Override
     public int getSectionSize(int position) {
-        return 1;
+        return (position * 2) + 1;
+    }
+
+    @Override
+    public int getTotalSize() {
+        return 100;
     }
 }

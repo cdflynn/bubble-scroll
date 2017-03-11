@@ -14,14 +14,19 @@ public interface BubbleScrollerAdapter {
      *
      * @param position The zero-indexed position of the section.
      */
-    char getSectionTitle(int position);
+    String getSectionTitle(int position);
 
     /**
-     * Return an arbitrary integer that describes the size of the section at {@code position}.
+     * Return an integer that describes the size of the section at {@code position}.
      * The returned value may be of any magnitude you want, but should be comparable in relative
      * terms to other section sizes.
      *
      * @param position the zero-indexed position of the section
      */
     int getSectionSize(int position);
+
+    /**
+     * Return the total size of all sections in aggregate.
+     */
+    int getTotalSize();
 }

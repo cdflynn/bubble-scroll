@@ -22,5 +22,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mViews = new Views(this);
+        mViews.scroller.setBubbleScrollerAdapter(new NumericAdapter());
     }
 }
