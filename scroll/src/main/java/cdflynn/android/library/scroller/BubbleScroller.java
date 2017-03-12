@@ -18,7 +18,6 @@ import android.support.v4.content.ContextCompat;
 import android.support.v4.view.ViewCompat;
 import android.text.TextPaint;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
@@ -42,7 +41,6 @@ public class BubbleScroller extends View {
     private static final float BUMPER_RADIUS = 200F;
     private static final int HIGHLIGHT_COLOR_DEFAULT = Color.CYAN;
     private static final int HIGHLIGHT_SIZE_DEFAULT = 34;
-    private static final int INTRINSIC_VERTICAL_PADDING = 40;
     private static final float SCALE_FACTOR_MAX = 1.3F;
     private static final float SCALE_FACTOR_MIN = 0.7F;
     private static final int TEXT_SIZE_DEFAULT = 50;
@@ -298,17 +296,17 @@ public class BubbleScroller extends View {
         super.onLayout(changed, left, top, right, bottom);
         if (changed) {
             mDrawableRect.left = getPaddingLeft();
-            mDrawableRect.top = getPaddingTop() + INTRINSIC_VERTICAL_PADDING;
+            mDrawableRect.top = getPaddingTop() + mTextSize/2;
             mDrawableRect.right = right - left - getPaddingRight();
-            mDrawableRect.bottom = bottom - top - getPaddingBottom();
+            mDrawableRect.bottom = bottom - top - getPaddingBottom() - mTextSize/2;
 
-            mTextStart.x = mDrawableRect.centerX();
+            mTextStart.x = mDrawableRect.right - (mTextSize/2);
             mTextStart.y = mDrawableRect.top;
-            mTextEnd.x = mDrawableRect.centerX();
+            mTextEnd.x = mDrawableRect.right - (mTextSize/2);
             mTextEnd.y = mDrawableRect.bottom;
 
-            mBumperCircleXResting = (int) (mDrawableRect.centerX() + BUMPER_RADIUS);
-            mBumperCircleXProtruding = (int) (mDrawableRect.centerX() + BUMPER_RADIUS / 2);
+            mBumperCircleXResting = (int) (mTextStart.x + BUMPER_RADIUS);
+            mBumperCircleXProtruding = (int) (mTextStart.x + BUMPER_RADIUS / 2);
 
             mHorizontalBaseline = (int) mTextStart.x;
 
@@ -466,7 +464,7 @@ public class BubbleScroller extends View {
     private void setVerticalOffsets(int[] intoArray) {
         final int totalSize = mTotalWeight;
         final float height = mDrawableRect.height();
-        int offset = INTRINSIC_VERTICAL_PADDING;
+        int offset = (int)mDrawableRect.top;
 
         for (int i = 0; i < mSectionCount; i++) {
             final float sectionSize = mAdapter.getSectionWeight(i);
@@ -679,11 +677,12 @@ public class BubbleScroller extends View {
 
         @Override
         public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-            setCurrentSectionIndex(sectionIndexAtYPosition(e2.getY()));
-            setCircleCenter(mCircleCenter.x, e2.getY());
+            final float y = e2.getY();
+            setCurrentSectionIndex(sectionIndexAtYPosition(y));
+            setCircleCenter(mCircleCenter.x, y);
             calculateDrawableElements();
             invalidate();
-            dispatchScrollPercentageChanged(e2.getY());
+            dispatchScrollPercentageChanged(y);
             return true;
         }
 

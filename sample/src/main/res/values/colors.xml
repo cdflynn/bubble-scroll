@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">@color/lake</color>
+    <color name="colorPrimary">@color/blue</color>
     <color name="colorPrimaryDark">@color/gravel</color>
-    <color name="colorAccent">@color/chrome</color>
+    <color name="colorAccent">@color/blue_light</color>
 
+    <color name="blue_light">#1966FF</color>
+    <color name="blue">#212845</color>
+    <color name="blue_deep">#383d53</color>
     <color name="chrome">#a3a3a3</color>
+    <color name="ghost">#a85c5c5c</color>
     <color name="gravel">#1e1e1e</color>
     <color name="grey">#3d3636</color>
     <color name="lake">#235b49</color>

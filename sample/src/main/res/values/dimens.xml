@@ -5,5 +5,13 @@
 
     <!-- Text -->
     <dimen name="text_size_small">16sp</dimen>
-    <dimen name="text_size_large">22sp</dimen>
+    <dimen name="text_size_medium">20sp</dimen>
+    <dimen name="text_size_large">24sp</dimen>
+
+    <dimen name="contact_row_height">80dp</dimen>
+    <dimen name="contact_heading_size">65dp</dimen>
+    <dimen name="contact_img_size">65dp</dimen>
+    <dimen name="contact_row_padding">4dp</dimen>
+    <dimen name="contact_name_padding">20dp</dimen>
+    <dimen name="contact_divider_size">160dp</dimen>
 </resources>

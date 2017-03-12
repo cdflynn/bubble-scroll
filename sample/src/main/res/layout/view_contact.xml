@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                xmlns:tools="http://schemas.android.com/tools"
+                android:paddingBottom="@dimen/contact_row_padding"
+                android:paddingTop="@dimen/contact_row_padding"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/contact_row_height">
+
+    <TextView
+        android:id="@+id/title_index"
+        android:layout_width="@dimen/contact_heading_size"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:textColor="@color/chrome"
+        android:layout_alignParentTop="true"
+        android:textSize="@dimen/text_size_large"
+        tools:text="A"/>
+
+    <ImageView
+        android:id="@+id/contact_img"
+        android:layout_toEndOf="@id/title_index"
+        android:layout_centerVertical="true"
+        android:layout_width="@dimen/contact_img_size"
+        android:layout_height="@dimen/contact_img_size"
+        tools:src="@drawable/pic_01"/>
+
+    <TextView
+        android:layout_toEndOf="@id/contact_img"
+        android:textColor="@android:color/white"
+        android:id="@+id/contact_name"
+        android:gravity="center_vertical"
+        android:layout_marginStart="@dimen/contact_name_padding"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        tools:text="Alex Appleby"/>
+    
+    <View
+        android:layout_alignBottom="@id/contact_img"
+        android:layout_toEndOf="@id/contact_img"
+        android:layout_marginStart="@dimen/contact_name_padding"
+        android:layout_width="@dimen/contact_divider_size"
+        android:layout_height="1dp"
+        android:background="@color/blue_deep"/>
+    
+    
+
+
+</RelativeLayout>
