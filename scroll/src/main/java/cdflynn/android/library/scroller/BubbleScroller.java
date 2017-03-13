@@ -572,11 +572,6 @@ public class BubbleScroller extends View {
     }
 
     private void notifySectionsChangedInternal() {
-        if (!ViewCompat.isLaidOut(this) && !isInLayout()) {
-            // we'll come back to this in the layout pass.
-            return;
-        }
-
         final int sectionCount = mAdapter.getSectionCount();
         if (sectionCount != mSectionCount) { // if the section count changed
             mSectionCount = sectionCount;
