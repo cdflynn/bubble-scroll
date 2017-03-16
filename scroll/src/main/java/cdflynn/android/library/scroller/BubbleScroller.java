@@ -15,7 +15,6 @@ import android.os.Build;
 import android.support.annotation.ColorInt;
 import android.support.annotation.Nullable;
 import android.support.v4.content.ContextCompat;
-import android.support.v4.view.ViewCompat;
 import android.text.TextPaint;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
@@ -27,7 +26,6 @@ import cdflynn.android.library.scroller.util.Geometry;
 // TODO:
 
 /**
- * - remove intrinsic padding and figure out why the first header is missing.
  * - two-way information flow of scrolls
  * - fix the weird long press thing
  * - Use gravity to place the header text top, center, or bottom
