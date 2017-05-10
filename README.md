@@ -1,5 +1,7 @@
 # bubble-scroll
 
+For a fun read, see my [Companion Article on Medium.com](https://medium.com/livefront/its-alive-1d3358523bda)
+
 ![Sample App](https://github.com/cdflynn/bubble-scroll/blob/master/sample/img/scroll_sample_gif.gif?raw=true)
               
               
